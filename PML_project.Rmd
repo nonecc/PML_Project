@@ -1,0 +1,95 @@
+---
+title: "PML Project"
+author: "nonecc"
+date: "March 4, 2019"
+output: html_document
+---
+
+# Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+# Read in data and setup
+```{r}
+library(tidyverse);library(caret)
+
+pml_train <- read_csv("pml-training.csv")
+pml_test <- read_csv("pml-testing.csv")
+```
+
+# Data Cleaning
+We want to remove any columns that won't help us predict classe. The first 5 columns include meta data such as row numbers, user names, and timestamps. They will likely not help us much, so they will be removed. Many of the columns contain many NA values. We have the option of either imputing or removing them. For this project, we will remove them for simplicity. 
+```{r}
+#select all columns that aren't metadata or na
+meta_data_cols <- 1:5
+na_cols <- colnames(pml_train)[apply(pml_train, 2, anyNA)]
+
+pml_train <- pml_train %>% select(-meta_data_cols) %>%
+                select(-na_cols) %>%
+                mutate(new_window=as.factor(new_window), classe=as.factor(classe))
+pml_test <- pml_test %>% select(-meta_data_cols) %>%
+                select(-na_cols) %>%
+                select(-problem_id) %>%
+                mutate(new_window=as.factor(new_window))
+```
+
+
+we'll standardize all the values to keep all the variables in the same scale
+```{r}
+scale_param <- preProcess(pml_train, method=c("center", "scale"))
+pml_train <- predict(scale_param, pml_train)
+pml_test <- predict(scale_param, pml_test)
+```
+
+# Model building
+We will train a couple models and evaluate their training performance using 5-fold cross validation. I tend to use 5 fold in order to keep performance reasonable. Our focus will be looking for a model with the highest accuracy.
+
+## Setup cross validation
+```{r}
+train_control <- trainControl(method="cv", number=5)
+```
+
+## K-Nearest Neighbors 
+Our first model will be a simple KNN classifier using all of our remaining variables
+```{r}
+model_knn <- train(classe~., data=pml_train, trControl=train_control, method="kknn")
+model_knn
+```
+
+## Boosted Logistic Regression
+Our second model will be a boosted logistic regression model.
+```{r}
+model_bl <- train(classe~., data=pml_train, trControl=train_control, method="LogitBoost")
+model_bl
+```
+
+## Classification Tree
+Our third model will be a classification tree using the 'rpart' backend.
+```{r}
+model_rpart <- train(classe~., data=pml_train, trControl=train_control, method="rpart")
+model_rpart
+```
+
+## Bagged Classification Tree
+Our forth model will be a bagged classification tree.
+```{r}
+model_bt <- train(classe~., data=pml_train, trControl=train_control, method="treebag")
+model_bt
+```
+
+# Model evaluation
+Our worst model was the rpart classification tree. This model achieved accuracy of 53% with a complexity parameter of  0.03891896. Our two middle performing models were our boosted logistic regression and KNN models. They achieved accuracys of 93% and 98% accuracy respectively. Our top performing model is our bagged classification tree with an accuracy of 99%. These models were selected due to their training performance. We attempted to train a few other ensemble type algorithms, but would not train in a reasonable amount of time. 
+
+# Generate Predictions
+```{r}
+pred_knn <- predict(model_knn, pml_test)
+pred_bl <- predict(model_bl, pml_test)
+pred_rpart <- predict(model_rpart, pml_test)
+pred_bt <- predict(model_bt, pml_test)
+
+predictions <- data.frame(pred_knn, pred_bl, pred_rpart, pred_bt)
+predictions
+```
+
+
+
+
